@@ -128,3 +128,4 @@ dmypy.json
 .vscode/settings.json
 images/
 result/
+.DS_Store
