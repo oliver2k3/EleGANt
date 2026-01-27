@@ -80,7 +80,7 @@ def build_target_coordinate_matrix(target_height, target_width, target_control_p
 
 def tps_sampler(target_height, target_width, inverse_kernel, target_coordinate_repr,
                 source, source_control_points, sample_mode='bilinear'):
-    '''
+    r'''
     inverse_kernel: \Delta_C^-1
     target_coordinate_repr: \hat{p}
     source: (B, C, H, W)

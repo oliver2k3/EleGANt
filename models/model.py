@@ -2,7 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import VGG as TVGG
-from torchvision.models.vgg import load_state_dict_from_url, model_urls, cfgs
+try:
+    from torchvision.models.vgg import load_state_dict_from_url, model_urls, cfgs
+except ImportError:
+    from torch.hub import load_state_dict_from_url
+    from torchvision.models.vgg import VGG16_Weights
+    model_urls = {
+        'vgg16': VGG16_Weights.IMAGENET1K_V1.url
+    }
+    cfgs = {
+        'D': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
+    }
 
 from .modules.spectral_norm import spectral_norm as SpectralNorm
 from .elegant import Generator

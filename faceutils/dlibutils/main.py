@@ -36,7 +36,7 @@ def crop(image: Image, face, up_ratio, down_ratio, width_ratio) -> (Image, 'face
     face_width = face.width()
     delta_up = up_ratio * face_height
     delta_down = down_ratio * face_height
-    delta_width = width_ratio * width
+    delta_width = width_ratio * face_width  # Fixed: use face_width instead of width
 
     img_left = int(max(0, face.left() - delta_width))
     img_top = int(max(0, face.top() - delta_up))
@@ -117,7 +117,7 @@ def crop_from_array(image: np.array, face) -> (np.array, 'face'):
     face_height = face.height()
     face_width = face.width()
     delta_height = ratio * face_height
-    delta_width = ratio * width
+    delta_width = ratio * face_width  # Fixed: use face_width instead of width
 
     img_left = int(max(0, face.left() - delta_width))
     img_top = int(max(0, face.top() - delta_height))

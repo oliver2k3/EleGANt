@@ -164,7 +164,7 @@ class PreProcess:
             if torch.sum(torch.abs(lms[61+i] - lms[67-i])) == 0:
                 lms[61+i,0] -= 1;  lms[67-i,0] += 1
 
-        image = image.resize((self.img_size, self.img_size), Image.ANTIALIAS)
+        image = image.resize((self.img_size, self.img_size), Image.LANCZOS)
         return [image, mask, lms], face_on_image, crop_face
     
     def process(self, image: Image, mask: torch.Tensor, lms: torch.Tensor):

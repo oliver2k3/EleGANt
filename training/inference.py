@@ -59,7 +59,7 @@ class Inference:
         height, width = source.shape[:2]
         small_source = cv2.resize(source, (self.img_size, self.img_size))
         laplacian_diff = source.astype(
-            np.float) - cv2.resize(small_source, (width, height)).astype(np.float)
+            np.float64) - cv2.resize(small_source, (width, height)).astype(np.float64)
         result = (cv2.resize(result, (width, height)) +
                   laplacian_diff).round().clip(0, 255)
 
@@ -181,18 +181,23 @@ class Inference:
         return result
 
     
-    def transfer(self, source: Image, reference: Image, postprocess=True):
+    def transfer(self, source: Image, reference: Image, postprocess=True, return_full_image=False):
         """
         Args:
             source (Image): The image where makeup will be transfered to.
             reference (Image): Image containing targeted makeup.
+            postprocess (bool): Whether to apply postprocessing.
+            return_full_image (bool): If True, returns tuple (face_result, full_image_result)
         Return:
-            Image: Transfered image.
+            Image: Transfered image (face only or full image based on return_full_image).
         """
+        # Store original image for full image output
+        original_source = source.copy()
+        
         source_input, face, crop_face = self.preprocess(source)
         reference_input, _, _ = self.preprocess(reference)
         if not (source_input and reference_input):
-            return None
+            return None if not return_full_image else (None, None)
 
         #source_sample = self.generate_source_sample(source_input)
         #reference_samples = [self.generate_reference_sample(reference_input)]
@@ -202,9 +207,83 @@ class Inference:
         result = self.solver.test(*source_input, *reference_input)
         
         if not postprocess:
-            return result
+            face_result = result
         else:
-            return self.postprocess(source, crop_face, result)
+            face_result = self.postprocess(source, crop_face, result)
+        
+        # If return_full_image is True, create full image with makeup applied to face region
+        if return_full_image and crop_face is not None:
+            full_result = self.paste_face_to_full_image(original_source, face_result, crop_face)
+            return face_result, full_result
+        elif return_full_image:
+            # If no crop_face, return the face result as both outputs
+            return face_result, face_result
+        else:
+            return face_result
+    
+    def paste_face_to_full_image(self, original_image: Image, face_result: Image, crop_face):
+        """
+        Paste the makeup-applied face back to the original full image with smooth blending.
+        
+        Args:
+            original_image (Image): Original full image with background
+            face_result (Image): Processed face image with makeup
+            crop_face: dlib rectangle of the detected face region
+        
+        Return:
+            Image: Full image with makeup applied to face region with smooth blending
+        """
+        import cv2
+        
+        # Convert to numpy arrays
+        original_np = np.array(original_image)
+        face_result_np = np.array(face_result)
+        
+        # Get crop coordinates
+        left = max(0, crop_face.left())
+        top = max(0, crop_face.top())
+        right = min(original_np.shape[1], crop_face.right())
+        bottom = min(original_np.shape[0], crop_face.bottom())
+        
+        # Resize face result to match the crop size
+        crop_width = right - left
+        crop_height = bottom - top
+        face_resized = cv2.resize(face_result_np, (crop_width, crop_height), interpolation=cv2.INTER_LANCZOS4)
+        
+        # Create a smooth blending mask using ellipse
+        mask = np.zeros((crop_height, crop_width), dtype=np.float32)
+        
+        # Create elliptical mask centered on the face
+        center_x = crop_width // 2
+        center_y = crop_height // 2
+        axes_x = int(crop_width * 0.45)  # 90% of half width
+        axes_y = int(crop_height * 0.5)   # 100% of half height
+        
+        cv2.ellipse(mask, (center_x, center_y), (axes_x, axes_y), 0, 0, 360, 1, -1)
+        
+        # Apply Gaussian blur to create smooth transition
+        blur_amount = max(crop_width, crop_height) // 10
+        if blur_amount % 2 == 0:
+            blur_amount += 1  # Must be odd
+        blur_amount = max(blur_amount, 21)  # Minimum blur for smooth transition
+        
+        mask = cv2.GaussianBlur(mask, (blur_amount, blur_amount), 0)
+        
+        # Expand mask to 3 channels
+        mask_3ch = np.stack([mask] * 3, axis=2)
+        
+        # Get the region from original image
+        original_region = original_np[top:bottom, left:right]
+        
+        # Blend the face result with original using the mask
+        blended_region = (face_resized * mask_3ch + original_region * (1 - mask_3ch)).astype(np.uint8)
+        
+        # Create result image
+        result_np = original_np.copy()
+        result_np[top:bottom, left:right] = blended_region
+        
+        # Convert back to PIL Image
+        return Image.fromarray(result_np)
 
     def joint_transfer(self, source: Image, reference_lip: Image, reference_skin: Image,
                        reference_eye: Image, postprocess=True):
