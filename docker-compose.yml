@@ -2,6 +2,8 @@ version: '3.8'
 
 services:
   elegant-web:
+    image: oliver9889/elegant-web:latest
+    platform: linux/amd64
     build: .
     container_name: elegant-makeup-transfer
     ports:
