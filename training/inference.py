@@ -221,6 +221,59 @@ class Inference:
         else:
             return face_result
     
+    def transfer_with_intensity(self, source: Image, reference: Image, 
+                              lip_intensity=1.0, skin_intensity=1.0, eye_intensity=1.0,
+                              postprocess=True, return_full_image=False):
+        """
+        Transfer makeup với điều chỉnh độ đậm riêng cho từng vùng.
+        
+        Args:
+            source (Image): The image where makeup will be transferred to.
+            reference (Image): Image containing targeted makeup.
+            lip_intensity (float): Intensity for lip makeup (0.0 - 1.5)
+            skin_intensity (float): Intensity for skin makeup (0.0 - 1.5)
+            eye_intensity (float): Intensity for eye makeup (0.0 - 1.5)
+            postprocess (bool): Whether to apply postprocessing.
+            return_full_image (bool): If True, returns tuple (face_result, full_image_result)
+        
+        Return:
+            Image or tuple: Transferred image(s) with customized intensity per region.
+        """
+        original_source = source.copy()
+        
+        source_input, face, crop_face = self.preprocess(source)
+        reference_input, _, _ = self.preprocess(reference)
+        if not (source_input and reference_input):
+            return None if not return_full_image else (None, None)
+
+        source_mask = source_input[1]
+        source_sample = self.generate_source_sample(source_input)
+        
+        # Tạo reference samples với độ đậm riêng cho từng vùng
+        reference_samples = [
+            self.generate_reference_sample(reference_input, source_mask=source_mask, 
+                                         mask_area='lip', saturation=lip_intensity),
+            self.generate_reference_sample(reference_input, source_mask=source_mask, 
+                                         mask_area='skin', saturation=skin_intensity),
+            self.generate_reference_sample(reference_input, source_mask=source_mask, 
+                                         mask_area='eye', saturation=eye_intensity)
+        ]
+        
+        result = self.interface_transfer(source_sample, reference_samples)
+        
+        if not postprocess:
+            face_result = result
+        else:
+            face_result = self.postprocess(source, crop_face, result)
+        
+        if return_full_image and crop_face is not None:
+            full_result = self.paste_face_to_full_image(original_source, face_result, crop_face)
+            return face_result, full_result
+        elif return_full_image:
+            return face_result, face_result
+        else:
+            return face_result
+    
     def paste_face_to_full_image(self, original_image: Image, face_result: Image, crop_face):
         """
         Paste the makeup-applied face back to the original full image with smooth blending.

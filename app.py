@@ -100,7 +100,33 @@ with st.sidebar:
     """)
     
     st.header("⚙️ Settings")
-    show_examples = st.checkbox("Show example images", value=True)
+    st.markdown("---")
+    st.subheader("🎨 Makeup Intensity")
+    
+    lip_intensity = st.slider(
+        "💄 Độ đậm son môi",
+        min_value=0.0,
+        max_value=1.5,
+        value=1.0,
+        step=0.05,
+        help="0.0 = không son, 1.0 = bình thường, 1.5 = đậm hơn"
+    )
+    skin_intensity = st.slider(
+        "✨ Độ đậm makeup da",
+        min_value=0.0,
+        max_value=1.5,
+        value=1.0,
+        step=0.05,
+        help="Điều chỉnh foundation, blush và các makeup trên da"
+    )
+    eye_intensity = st.slider(
+        "👁️ Độ đậm makeup mắt",
+        min_value=0.0,
+        max_value=1.5,
+        value=1.0,
+        step=0.05,
+        help="Điều chỉnh eyeshadow, eyeliner và các makeup mắt"
+    )
 
 # Load model on first run
 if not st.session_state.model_loaded:
@@ -124,12 +150,6 @@ with col1:
     if source_file:
         source_img = Image.open(source_file).convert('RGB')
         st.image(source_img, caption="Source Image", use_container_width=True)
-    elif show_examples:
-        example_source = "assets/images/non-makeup/source_1.png"
-        if os.path.exists(example_source):
-            source_img = Image.open(example_source).convert('RGB')
-            st.image(source_img, caption="Example Source Image", use_container_width=True)
-            st.info("💡 This is an example. Upload your own image above!")
 
 with col2:
     st.subheader("💅 Reference Image (With Makeup)")
@@ -142,12 +162,6 @@ with col2:
     if reference_file:
         reference_img = Image.open(reference_file).convert('RGB')
         st.image(reference_img, caption="Reference Image", use_container_width=True)
-    elif show_examples:
-        example_ref = "assets/images/makeup/reference_1.png"
-        if os.path.exists(example_ref):
-            reference_img = Image.open(example_ref).convert('RGB')
-            st.image(reference_img, caption="Example Reference Image", use_container_width=True)
-            st.info("💡 This is an example. Upload your own image above!")
 
 # Processing button
 st.markdown("---")
@@ -156,21 +170,14 @@ process_button = st.button("✨ Apply Makeup Transfer", type="primary", use_cont
 if process_button:
     if not st.session_state.model_loaded:
         st.error("❌ Model not loaded. Please refresh the page.")
-    elif not source_file and not show_examples:
+    elif not source_file:
         st.warning("⚠️ Please upload a source image")
-    elif not reference_file and not show_examples:
+    elif not reference_file:
         st.warning("⚠️ Please upload a reference image")
     else:
-        # Get images (either uploaded or examples)
-        if source_file:
-            source_img = Image.open(source_file).convert('RGB')
-        else:
-            source_img = Image.open("assets/images/non-makeup/source_1.png").convert('RGB')
-        
-        if reference_file:
-            reference_img = Image.open(reference_file).convert('RGB')
-        else:
-            reference_img = Image.open("assets/images/makeup/reference_1.png").convert('RGB')
+        # Get images
+        source_img = Image.open(source_file).convert('RGB')
+        reference_img = Image.open(reference_file).convert('RGB')
         
         # Process
         st.markdown("---")
@@ -198,9 +205,12 @@ if process_button:
         # Actual processing
         try:
             # Get both face-only result and full image result
-            result_face, result_full = st.session_state.inference.transfer(
+            result_face, result_full = st.session_state.inference.transfer_with_intensity(
                 source_img, 
-                reference_img, 
+                reference_img,
+                lip_intensity=lip_intensity,
+                skin_intensity=skin_intensity,
+                eye_intensity=eye_intensity,
                 postprocess=True,
                 return_full_image=True
             )
