@@ -4,6 +4,8 @@ import sys
 import torch
 import time
 import numpy as np
+import json
+import shutil
 from PIL import Image
 from pathlib import Path
 
@@ -83,6 +85,78 @@ def load_model():
     inference = Inference(config, args, model_path)
     return inference
 
+# Preset management functions
+def get_presets_dir():
+    """Get or create the presets directory"""
+    presets_dir = Path('presets')
+    presets_dir.mkdir(exist_ok=True)
+    return presets_dir
+
+def save_preset(preset_name, reference_image, config):
+    """Save a preset with reference image and configuration"""
+    presets_dir = get_presets_dir()
+    preset_dir = presets_dir / preset_name
+    preset_dir.mkdir(exist_ok=True)
+    
+    # Save reference image
+    ref_path = preset_dir / 'reference.png'
+    reference_image.save(str(ref_path))
+    
+    # Save configuration
+    config_path = preset_dir / 'config.json'
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    return True
+
+def load_preset(preset_name):
+    """Load a preset configuration and reference image"""
+    presets_dir = get_presets_dir()
+    preset_dir = presets_dir / preset_name
+    
+    if not preset_dir.exists():
+        return None, None
+    
+    # Load reference image
+    ref_path = preset_dir / 'reference.png'
+    if not ref_path.exists():
+        return None, None
+    
+    reference_image = Image.open(ref_path).convert('RGB')
+    
+    # Load configuration
+    config_path = preset_dir / 'config.json'
+    if not config_path.exists():
+        return reference_image, {}
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    return reference_image, config
+
+def get_available_presets():
+    """Get list of available presets"""
+    presets_dir = get_presets_dir()
+    if not presets_dir.exists():
+        return []
+    
+    presets = []
+    for item in presets_dir.iterdir():
+        if item.is_dir() and (item / 'config.json').exists():
+            presets.append(item.name)
+    
+    return sorted(presets)
+
+def delete_preset(preset_name):
+    """Delete a preset"""
+    presets_dir = get_presets_dir()
+    preset_dir = presets_dir / preset_name
+    
+    if preset_dir.exists():
+        shutil.rmtree(preset_dir)
+        return True
+    return False
+
 # Sidebar
 with st.sidebar:
     st.header("ℹ️ About")
@@ -103,30 +177,122 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🎨 Makeup Intensity")
     
+    # Initialize preset reload counter if not exists
+    if 'preset_reload_count' not in st.session_state:
+        st.session_state.preset_reload_count = 0
+    
+    # Get default values from loaded preset or use defaults
+    if 'loaded_preset_config' in st.session_state and st.session_state.loaded_preset_config:
+        config = st.session_state.loaded_preset_config
+        default_lip = config.get('lip_intensity', 1.0)
+        default_skin = config.get('skin_intensity', 1.0)
+        default_eye = config.get('eye_intensity', 1.0)
+    else:
+        default_lip = 1.0
+        default_skin = 1.0
+        default_eye = 1.0
+    
+    # Use dynamic keys to force slider update when preset changes
+    slider_key_suffix = f"_{st.session_state.preset_reload_count}"
+    
     lip_intensity = st.slider(
         "💄 Độ đậm son môi",
         min_value=0.0,
         max_value=1.5,
-        value=1.0,
+        value=default_lip,
         step=0.05,
-        help="0.0 = không son, 1.0 = bình thường, 1.5 = đậm hơn"
+        help="0.0 = không son, 1.0 = bình thường, 1.5 = đậm hơn",
+        key=f"lip_slider{slider_key_suffix}"
     )
     skin_intensity = st.slider(
         "✨ Độ đậm makeup da",
         min_value=0.0,
         max_value=1.5,
-        value=1.0,
+        value=default_skin,
         step=0.05,
-        help="Điều chỉnh foundation, blush và các makeup trên da"
+        help="Điều chỉnh foundation, blush và các makeup trên da",
+        key=f"skin_slider{slider_key_suffix}"
     )
     eye_intensity = st.slider(
         "👁️ Độ đậm makeup mắt",
         min_value=0.0,
         max_value=1.5,
-        value=1.0,
+        value=default_eye,
         step=0.05,
-        help="Điều chỉnh eyeshadow, eyeliner và các makeup mắt"
+        help="Điều chỉnh eyeshadow, eyeliner và các makeup mắt",
+        key=f"eye_slider{slider_key_suffix}"
     )
+    
+    # Preset Management
+    st.markdown("---")
+    st.subheader("💾 Presets")
+    
+    # Load existing preset
+    available_presets = get_available_presets()
+    
+    if available_presets:
+        st.write("**Load Preset:**")
+        selected_preset = st.selectbox(
+            "Choose a preset",
+            options=["-- None --"] + available_presets,
+            key="preset_selector"
+        )
+        
+        col_load, col_del = st.columns(2)
+        
+        with col_load:
+            if st.button("📂 Load", width='stretch', disabled=(selected_preset == "-- None --")):
+                if selected_preset != "-- None --":
+                    ref_img, config = load_preset(selected_preset)
+                    if ref_img and config:
+                        st.session_state.loaded_preset_ref = ref_img
+                        st.session_state.loaded_preset_config = config
+                        st.session_state.loaded_preset_name = selected_preset
+                        # Increment counter to force slider recreation with new values
+                        st.session_state.preset_reload_count = st.session_state.get('preset_reload_count', 0) + 1
+                        st.success(f"✅ Loaded preset: {selected_preset}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to load preset")
+        
+        with col_del:
+            if st.button("🗑️ Delete", width='stretch', disabled=(selected_preset == "-- None --")):
+                if selected_preset != "-- None --":
+                    if delete_preset(selected_preset):
+                        st.success(f"✅ Deleted: {selected_preset}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to delete preset")
+    
+    # Save new preset
+    st.write("**Save Current Settings:**")
+    with st.form("save_preset_form"):
+        preset_name = st.text_input(
+            "Preset name",
+            placeholder="e.g., Natural Look, Evening Glam",
+            help="Enter a name for this preset"
+        )
+        save_button = st.form_submit_button("💾 Save Preset", width='stretch')
+        
+        if save_button:
+            if not preset_name:
+                st.error("❌ Please enter a preset name")
+            elif 'reference_file_for_preset' not in st.session_state or st.session_state.reference_file_for_preset is None:
+                st.error("❌ Please upload a reference image first")
+            else:
+                # Save the preset
+                config = {
+                    "lip_intensity": lip_intensity,
+                    "skin_intensity": skin_intensity,
+                    "eye_intensity": eye_intensity
+                }
+                
+                try:
+                    save_preset(preset_name, st.session_state.reference_file_for_preset, config)
+                    st.success(f"✅ Preset saved: {preset_name}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error saving preset: {str(e)}")
 
 # Load model on first run
 if not st.session_state.model_loaded:
@@ -160,7 +326,7 @@ with col1:
             for idx, file in enumerate(source_files[:8]):  # Show max 8 previews
                 with cols[idx % 4]:
                     img = Image.open(file).convert('RGB')
-                    st.image(img, caption=f"Source {idx+1}", use_container_width=True)
+                    st.image(img, caption=f"Source {idx+1}", width='stretch')
     else:
         source_files = st.file_uploader(
             "Upload source image", 
@@ -171,35 +337,61 @@ with col1:
         
         if source_files:
             source_img = Image.open(source_files).convert('RGB')
-            st.image(source_img, caption="Source Image", use_container_width=True)
+            st.image(source_img, caption="Source Image", width='stretch')
             source_files = [source_files]  # Convert to list for consistency
 
 with col2:
     st.subheader("💅 Reference Image (With Makeup)")
-    reference_file = st.file_uploader(
-        "Upload reference image",
-        type=['png', 'jpg', 'jpeg'],
-        key="reference"
-    )
     
-    if reference_file:
-        reference_img = Image.open(reference_file).convert('RGB')
-        st.image(reference_img, caption="Reference Image", use_container_width=True)
+    # Check if a preset was loaded
+    if 'loaded_preset_ref' in st.session_state and st.session_state.loaded_preset_ref is not None:
+        st.info(f"📋 Using preset: {st.session_state.get('loaded_preset_name', 'Unknown')}")
+        reference_img = st.session_state.loaded_preset_ref
+        st.image(reference_img, caption=f"Reference (from preset)", width='stretch')
+        
+        # Store for preset saving
+        st.session_state.reference_file_for_preset = reference_img
+        
+        reference_file = None  # Mark that we're using preset
+        
+        if st.button("🔄 Clear Preset", width='stretch'):
+            st.session_state.loaded_preset_ref = None
+            st.session_state.loaded_preset_config = None
+            st.session_state.loaded_preset_name = None
+            # Increment counter to force slider recreation with default values
+            st.session_state.preset_reload_count = st.session_state.get('preset_reload_count', 0) + 1
+            st.rerun()
+    else:
+        reference_file = st.file_uploader(
+            "Upload reference image",
+            type=['png', 'jpg', 'jpeg'],
+            key="reference"
+        )
+        
+        if reference_file:
+            reference_img = Image.open(reference_file).convert('RGB')
+            st.image(reference_img, caption="Reference Image", width='stretch')
+            
+            # Store for preset saving
+            st.session_state.reference_file_for_preset = reference_img
 
 # Processing button
 st.markdown("---")
-process_button = st.button("✨ Apply Makeup Transfer", type="primary", use_container_width=True)
+process_button = st.button("✨ Apply Makeup Transfer", type="primary", width='stretch')
 
 if process_button:
     if not st.session_state.model_loaded:
         st.error("❌ Model not loaded. Please refresh the page.")
     elif not source_files:
         st.warning("⚠️ Please upload source image(s)")
-    elif not reference_file:
-        st.warning("⚠️ Please upload a reference image")
+    elif not reference_file and ('loaded_preset_ref' not in st.session_state or st.session_state.loaded_preset_ref is None):
+        st.warning("⚠️ Please upload a reference image or load a preset")
     else:
         # Get reference image
-        reference_img = Image.open(reference_file).convert('RGB')
+        if 'loaded_preset_ref' in st.session_state and st.session_state.loaded_preset_ref is not None:
+            reference_img = st.session_state.loaded_preset_ref
+        else:
+            reference_img = Image.open(reference_file).convert('RGB')
         
         # Handle single vs multiple files
         if not isinstance(source_files, list):
@@ -300,16 +492,16 @@ if process_button:
                     col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
-                        st.image(result['source'], caption="Source", use_container_width=True)
+                        st.image(result['source'], caption="Source", width='stretch')
                     
                     with col2:
-                        st.image(reference_img, caption="Reference", use_container_width=True)
+                        st.image(reference_img, caption="Reference", width='stretch')
                     
                     with col3:
-                        st.image(result['result_face'], caption="Face Only", use_container_width=True)
+                        st.image(result['result_face'], caption="Face Only", width='stretch')
                     
                     with col4:
-                        st.image(result['result_full'], caption="Full Image", use_container_width=True)
+                        st.image(result['result_full'], caption="Full Image", width='stretch')
                     
                     # Download buttons
                     from io import BytesIO
@@ -369,7 +561,7 @@ if process_button:
                     file_name="makeup_transfer_batch.zip",
                     mime="application/zip",
                     type="primary",
-                    use_container_width=True
+                    width='stretch'
                 )
 
 # Footer

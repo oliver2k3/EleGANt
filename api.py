@@ -7,6 +7,7 @@ import sys
 import torch
 import time
 import shutil
+import json
 from PIL import Image
 from pathlib import Path
 
@@ -34,6 +35,13 @@ class MakeupRequest(BaseModel):
     skin_intensity: Optional[float] = 1.0
     eye_intensity: Optional[float] = 1.0
     save_face_only: Optional[bool] = False  # True: chỉ lưu face, False: lưu full image
+
+class PresetTransferRequest(BaseModel):
+    source_images: List[str]  # List of paths to source images
+    preset_path: str  # Path to preset folder (e.g., "presets/Natural Look")
+    session_id: str  # Session ID for output organization
+    output_folder: Optional[str] = "result"  # Base output folder
+    save_face_only: Optional[bool] = False  # True: save only face, False: save full image
 
 class MakeupResponse(BaseModel):
     success: bool
@@ -70,6 +78,30 @@ def load_model():
     
     model_instance = Inference(config, args, model_path)
     return model_instance
+
+def load_preset_config(preset_path):
+    """Load preset configuration and reference image from preset folder"""
+    preset_dir = Path(preset_path)
+    
+    if not preset_dir.exists() or not preset_dir.is_dir():
+        raise ValueError(f"Preset folder not found: {preset_path}")
+    
+    # Load reference image
+    ref_path = preset_dir / 'reference.png'
+    if not ref_path.exists():
+        raise ValueError(f"Reference image not found in preset: {ref_path}")
+    
+    reference_img = Image.open(ref_path).convert('RGB')
+    
+    # Load configuration
+    config_path = preset_dir / 'config.json'
+    if not config_path.exists():
+        raise ValueError(f"Configuration file not found in preset: {config_path}")
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    return reference_img, config
 
 @app.on_event("startup")
 async def startup_event():
@@ -212,6 +244,137 @@ async def transfer_makeup(request: MakeupRequest):
         errors=errors if errors else None
     )
 
+@app.post("/transfer-preset", response_model=MakeupResponse)
+async def transfer_makeup_preset(request: PresetTransferRequest):
+    """
+    Transfer makeup using a preset configuration
+    
+    Parameters:
+    - source_images: List of paths to source images (without makeup)
+    - preset_path: Path to preset folder containing reference image and config.json
+    - session_id: Session ID to create separate folder for this session (required)
+    - output_folder: Base output folder (default: "result")
+    - save_face_only: If True, save only face region; if False, save full image (default: False)
+    
+    The preset folder should contain:
+    - reference.png: Reference image with makeup
+    - config.json: Configuration with lip_intensity, skin_intensity, eye_intensity
+    """
+    
+    if model_instance is None:
+        raise HTTPException(status_code=500, detail="Model not loaded")
+    
+    # Load preset configuration and reference image
+    try:
+        reference_img, config = load_preset_config(request.preset_path)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error loading preset: {str(e)}")
+    
+    # Extract intensity values from config
+    lip_intensity = config.get('lip_intensity', 1.0)
+    skin_intensity = config.get('skin_intensity', 1.0)
+    eye_intensity = config.get('eye_intensity', 1.0)
+    
+    # Create output folder based on session_id
+    output_folder = Path(request.output_folder) / request.session_id
+    output_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Process each source image
+    results = []
+    errors = []
+    start_time = time.time()
+    
+    for idx, source_path in enumerate(request.source_images):
+        try:
+            # Validate source image exists
+            if not os.path.exists(source_path):
+                errors.append({
+                    "index": idx,
+                    "path": source_path,
+                    "error": "File not found"
+                })
+                continue
+            
+            # Load source image
+            source_img = Image.open(source_path).convert('RGB')
+            
+            # Get filename without extension
+            source_file = Path(source_path)
+            base_name = source_file.stem
+            extension = source_file.suffix
+            
+            # Process image
+            img_start = time.time()
+            result_face, result_full = model_instance.transfer_with_intensity(
+                source_img,
+                reference_img,
+                lip_intensity=lip_intensity,
+                skin_intensity=skin_intensity,
+                eye_intensity=eye_intensity,
+                postprocess=True,
+                return_full_image=True
+            )
+            img_time = time.time() - img_start
+            
+            if result_face is None:
+                errors.append({
+                    "index": idx,
+                    "path": source_path,
+                    "error": "No face detected in source image"
+                })
+                continue
+            
+            # Save result
+            output_filename = f"{base_name}_maked{extension}"
+            output_path = output_folder / output_filename
+            
+            # Save face-only or full image based on parameter
+            if request.save_face_only:
+                result_face.save(str(output_path))
+                result_type = "face_only"
+            else:
+                result_full.save(str(output_path))
+                result_type = "full_image"
+            
+            results.append({
+                "index": idx,
+                "source_path": source_path,
+                "output_path": str(output_path),
+                "output_filename": output_filename,
+                "result_type": result_type,
+                "processing_time": round(img_time, 2),
+                "preset_used": request.preset_path,
+                "config": {
+                    "lip_intensity": lip_intensity,
+                    "skin_intensity": skin_intensity,
+                    "eye_intensity": eye_intensity
+                }
+            })
+            
+        except Exception as e:
+            errors.append({
+                "index": idx,
+                "path": source_path,
+                "error": str(e)
+            })
+    
+    total_time = time.time() - start_time
+    
+    return MakeupResponse(
+        success=len(results) > 0,
+        message=f"Processed {len(results)} out of {len(request.source_images)} images successfully using preset: {request.preset_path}",
+        session_id=request.session_id,
+        output_folder=str(output_folder),
+        total_images=len(request.source_images),
+        successful=len(results),
+        failed=len(errors),
+        processing_time=round(total_time, 2),
+        results=results,
+        errors=errors if errors else None
+    )
+
 @app.get("/health")
 async def health_check():
     """Detailed health check"""
@@ -220,6 +383,51 @@ async def health_check():
         "model_loaded": model_instance is not None,
         "model_path": "ckpts/sow_pyramid_a5_e3d2_remapped.pth",
         "model_exists": os.path.exists("ckpts/sow_pyramid_a5_e3d2_remapped.pth")
+    }
+
+@app.get("/presets")
+async def list_presets():
+    """
+    List all available presets
+    
+    Returns a list of preset names that can be used with /transfer-preset
+    """
+    presets_dir = Path('presets')
+    
+    if not presets_dir.exists():
+        return {
+            "presets": [],
+            "count": 0,
+            "message": "No presets directory found"
+        }
+    
+    presets = []
+    for item in presets_dir.iterdir():
+        if item.is_dir():
+            config_path = item / 'config.json'
+            ref_path = item / 'reference.png'
+            
+            if config_path.exists() and ref_path.exists():
+                # Load config to get details
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                    
+                    presets.append({
+                        "name": item.name,
+                        "path": str(item),
+                        "config": config
+                    })
+                except:
+                    # If config can't be loaded, just add the name
+                    presets.append({
+                        "name": item.name,
+                        "path": str(item)
+                    })
+    
+    return {
+        "presets": sorted(presets, key=lambda x: x['name']),
+        "count": len(presets)
     }
 
 @app.get("/delete/{session_id}")
