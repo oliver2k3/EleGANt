@@ -435,12 +435,9 @@ if process_button:
                 start_time = time.time()
                 
                 # Actual processing
-                result_face, result_full = st.session_state.inference.transfer_with_intensity(
+                result_face, result_full = st.session_state.inference.transfer_all_faces(
                     source_img, 
                     reference_img,
-                    lip_intensity=lip_intensity,
-                    skin_intensity=skin_intensity,
-                    eye_intensity=eye_intensity,
                     postprocess=True,
                     return_full_image=True
                 )
