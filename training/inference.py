@@ -221,6 +221,76 @@ class Inference:
         else:
             return face_result
     
+    def transfer_all_faces(self, source: Image, reference: Image, postprocess=True, return_full_image=False):
+        """
+        Transfer makeup to ALL detected faces in source image.
+        
+        Args:
+            source (Image): The image where makeup will be transferred to.
+            reference (Image): Image containing targeted makeup.
+            postprocess (bool): Whether to apply postprocessing.
+            return_full_image (bool): If True, returns tuple (face_result, full_image_result).
+                                     For multi-face, both tuple elements are the same.
+        
+        Returns:
+            None if no faces detected or if any face fails processing (all-or-nothing)
+            Image with all faces makeup-applied (single or multi-face)
+            tuple (Image, Image) if return_full_image=True
+        
+        Limitations:
+            - Overlapping faces may have blending artifacts (direct pixel assignment in paste_face_to_full_image)
+            - Reference image: if multiple faces detected, only first face's makeup is used
+            - Processes faces sequentially (may be slow for many faces)
+            - All-or-nothing: returns None if any face fails processing
+        """
+        original_source = source.copy()
+        
+        # Preprocess reference ONCE (same makeup for all faces)
+        reference_input, _, _ = self.preprocess(reference)
+        if not reference_input:
+            return None if not return_full_image else (None, None)
+        
+        source_faces = self.preprocess.preprocess_all_faces(source)
+        
+        if source_faces is None:
+            return None if not return_full_image else (None, None)
+        
+        # Single face: use existing transfer() for compatibility
+        if isinstance(source_faces, tuple):
+            return self.transfer(source, reference, postprocess, return_full_image)
+        
+        result_image = original_source.copy()
+        for face_data, face_on_image, crop_face in source_faces:
+            try:
+                processed_face = self.preprocess.process(*face_data)
+                source_input = self.prepare_input(*processed_face)
+                reference_prepared = self.prepare_input(*reference_input)
+                face_result = self.solver.test(*source_input, *reference_prepared)
+                
+                if postprocess:
+                    # For postprocessing, we need the cropped source image
+                    if crop_face is not None:
+                        cropped_source = source.crop(
+                            (crop_face.left(), crop_face.top(), crop_face.right(), crop_face.bottom()))
+                    else:
+                        cropped_source = source
+                    face_result = self.postprocess(cropped_source, crop_face, face_result)
+                
+                if crop_face is not None:
+                    result_image = self.paste_face_to_full_image(result_image, face_result, crop_face)
+                else:
+                    # If no crop_face, the entire image is the face
+                    result_image = face_result
+                    
+            except Exception as e:
+                # All-or-nothing: if any face fails, return None
+                print(f"Face processing failed: {e}")
+                return None if not return_full_image else (None, None)
+        
+        if return_full_image:
+            return result_image, result_image  # Both same for multi-face
+        return result_image
+    
     def transfer_with_intensity(self, source: Image, reference: Image, 
                               lip_intensity=1.0, skin_intensity=1.0, eye_intensity=1.0,
                               postprocess=True, return_full_image=False):
