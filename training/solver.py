@@ -19,7 +19,7 @@ class Solver():
     def __init__(self, config, args, logger=None, inference=False):
         self.G = get_generator(config)
         if inference:
-            self.G.load_state_dict(torch.load(inference, map_location=args.device))
+            self.G.load_state_dict(torch.load(inference, map_location=args.device, weights_only=False))
             self.G = self.G.to(args.device).eval()
             return
         self.double_d = config.TRAINING.DOUBLE_D
