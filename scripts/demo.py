@@ -36,7 +36,7 @@ def main(config, args):
         imgB = Image.open(reference_path).convert('RGB')
 
         # Get both face-only and full image results
-        result_face, result_full = inference.transfer(imgA, imgB, postprocess=True, return_full_image=True) 
+        result_face, result_full = inference.transfer_all_faces(imgA, imgB, postprocess=True, return_full_image=True)
         if result_face is None:
             logger.warning(f"Skipping pair {i}: transfer failed")
             continue
