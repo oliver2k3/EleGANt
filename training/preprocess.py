@@ -167,6 +167,71 @@ class PreProcess:
         image = image.resize((self.img_size, self.img_size), Image.LANCZOS)
         return [image, mask, lms], face_on_image, crop_face
     
+    def preprocess_all_faces(self, image: Image, is_crop=True):
+        """
+        Preprocess image to extract ALL detected faces.
+        
+        Args:
+            image: Input PIL Image
+            is_crop: Whether to crop faces (default True)
+        
+        Returns:
+            None if no faces detected
+            Single result tuple if 1 face: ([image, mask, lms], face_on_image, crop_face)
+            List of result tuples if ≥2 faces: [([image, mask, lms], face_on_image, crop_face), ...]
+        
+        Limitations:
+            - If multiple faces in reference image, only first face's makeup is used
+            - Overlapping faces may have blending artifacts
+        """
+        faces = futils.dlib.detect(image)
+        
+        if not faces:
+            return None
+        
+        if len(faces) == 1:
+            # Backward compatible: single face uses existing path
+            return self.preprocess(image, is_crop)
+        
+        results = []
+        for face_on_image in faces:
+            if is_crop:
+                cropped_image, face, crop_face = futils.dlib.crop(
+                    image, face_on_image, self.up_ratio, self.down_ratio, self.width_ratio)
+            else:
+                cropped_image = image
+                face = face_on_image
+                crop_face = None
+            
+            # image: Image, cropped face
+            # face: the same as above
+            # crop face: rectangle, face region in cropped face
+            np_image = np.array(cropped_image)  # (h', w', 3)
+            
+            mask = self.face_parse.parse(cv2.resize(np_image, (512, 512))).cpu()
+            # obtain face parsing result
+            # mask: Tensor, (512, 512)
+            mask = F.interpolate(
+                mask.view(1, 1, 512, 512),
+                (self.img_size, self.img_size),
+                mode="nearest").squeeze(0).long()  # (1, H, W)
+            
+            lms = futils.dlib.landmarks(cropped_image, face) * self.img_size / cropped_image.width  # scale to fit self.img_size
+            # lms: narray, the position of 68 key points, (68, 2)
+            lms = torch.IntTensor(lms.round()).clamp_max_(self.img_size - 1)
+            # distinguish upper and lower lips
+            lms[61:64, 0] -= 1
+            lms[65:68, 0] += 1
+            for i in range(3):
+                if torch.sum(torch.abs(lms[61+i] - lms[67-i])) == 0:
+                    lms[61+i, 0] -= 1
+                    lms[67-i, 0] += 1
+            
+            processed_image = cropped_image.resize((self.img_size, self.img_size), Image.LANCZOS)
+            results.append(([processed_image, mask, lms], face_on_image, crop_face))
+        
+        return results
+    
     def process(self, image: Image, mask: torch.Tensor, lms: torch.Tensor):
         image = self.transform(image)
         mask = self.mask_process(mask)
