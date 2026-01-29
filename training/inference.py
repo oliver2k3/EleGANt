@@ -355,6 +355,10 @@ class Inference:
         
         Return:
             Image: Full image with makeup applied to face region with smooth blending
+        
+        Note:
+            Uses direct pixel assignment which may cause visual artifacts when processing
+            overlapping faces in multi-face scenarios.
         """
         import cv2
         

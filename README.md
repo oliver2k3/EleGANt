@@ -31,6 +31,31 @@ To train a model from scratch, run
 python scripts/train.py
 ```
 
+## Multi-Face Processing
+
+EleGANt now supports processing multiple faces in a single image. All detected faces will automatically receive the same makeup transfer.
+
+**Usage:**
+- All entry points (demo.py, API, Streamlit) automatically detect and process multiple faces
+- No configuration needed - works out of the box for images with 1+ faces
+
+**Known Limitations:**
+- Overlapping faces may have blending artifacts due to direct pixel assignment
+- Reference images with multiple faces: only first face's makeup is used
+- Faces processed sequentially (~3-5s per face on CPU, ~0.5-1s per face on GPU)
+- No face quality filtering - all detected faces are processed
+- Intensity controls (API/Streamlit) currently non-functional with multi-face images
+
+**Recommended Use Cases:**
+- Group photos (2-5 faces)
+- Portrait photography
+- Family photos
+- Product demos with multiple models
+
+**Not Recommended:**
+- Very large group photos (10+ faces) - may be slow or run out of memory
+- Images with significant face overlap - visual artifacts may occur
+
 ## Customized Transfer
 
 https://user-images.githubusercontent.com/61506577/180593092-ccadddff-76be-4b7b-921e-0d3b4cc27d9b.mp4
