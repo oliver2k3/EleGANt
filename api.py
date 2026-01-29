@@ -182,12 +182,9 @@ async def transfer_makeup(request: MakeupRequest):
             
             # Process image
             img_start = time.time()
-            result_face, result_full = model_instance.transfer_with_intensity(
+            result_face, result_full = model_instance.transfer_all_faces(
                 source_img,
                 reference_img,
-                lip_intensity=request.lip_intensity,
-                skin_intensity=request.skin_intensity,
-                eye_intensity=request.eye_intensity,
                 postprocess=True,
                 return_full_image=True
             )
@@ -307,12 +304,9 @@ async def transfer_makeup_preset(request: PresetTransferRequest):
             
             # Process image
             img_start = time.time()
-            result_face, result_full = model_instance.transfer_with_intensity(
+            result_face, result_full = model_instance.transfer_all_faces(
                 source_img,
                 reference_img,
-                lip_intensity=lip_intensity,
-                skin_intensity=skin_intensity,
-                eye_intensity=eye_intensity,
                 postprocess=True,
                 return_full_image=True
             )
