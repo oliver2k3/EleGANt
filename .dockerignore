@@ -10,6 +10,9 @@ ENV/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # IDE
 .vscode/
@@ -17,6 +20,7 @@ build/
 *.swp
 *.swo
 *~
+.ipynb_checkpoints
 
 # OS
 .DS_Store
@@ -25,14 +29,28 @@ Thumbs.db
 # Git
 .git/
 .gitignore
+.gitattributes
 
-# Documentation
+# Docker
+.dockerignore
+
+# Documentation (keep some important ones)
 *.md
 !README.md
+!API_README.md
+!DOCKER_GUIDE.md
 
-# Large files (keep only necessary checkpoints)
-result/demo/*
-!result/demo/.gitkeep
-
-# Misc
+# Large files that will be mounted as volumes
+result/
 *.log
+*.tmp
+*.bak
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Environment
+.env
+.env.*

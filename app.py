@@ -55,8 +55,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Title
-st.markdown('<p class="main-header">💄 EleGANt Makeup Transfer</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Transform your look with AI-powered makeup transfer</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header">💄 Chuyển Makeup Bằng AI</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Chuyển đổi phong cách makeup của bạn với công nghệ AI hiện đại</p>', unsafe_allow_html=True)
 
 # Initialize session state
 if 'model_loaded' not in st.session_state:
@@ -159,23 +159,16 @@ def delete_preset(preset_name):
 
 # Sidebar
 with st.sidebar:
-    st.header("ℹ️ About")
-    st.write("""
-    **EleGANt** is an AI model for makeup transfer that can:
-    - Transfer makeup from reference image to source image
-    - Preserve facial features and identity
-    - Generate natural-looking results
     
-    **How to use:**
-    1. Upload a source image (without makeup)
-    2. Upload a reference image (with makeup)
-    3. Click "Apply Makeup Transfer"
-    4. Wait for processing and view results
-    """)
     
-    st.header("⚙️ Settings")
+    st.header("⚙️ Cài Đặt")
     st.markdown("---")
-    st.subheader("🎨 Makeup Intensity")
+    st.subheader("🎨 Độ Đậm Makeup")
+    
+    # Initialize confirm delete state
+    if 'confirm_delete_preset' not in st.session_state:
+        st.session_state.confirm_delete_preset = False
+        st.session_state.delete_preset_name = None
     
     # Initialize preset reload counter if not exists
     if 'preset_reload_count' not in st.session_state:
@@ -225,24 +218,24 @@ with st.sidebar:
     
     # Preset Management
     st.markdown("---")
-    st.subheader("💾 Presets")
+    st.subheader("💾 Cài Đặt Sẵn")
     
     # Load existing preset
     available_presets = get_available_presets()
     
     if available_presets:
-        st.write("**Load Preset:**")
+        st.write("**Tải Cài Đặt:**")
         selected_preset = st.selectbox(
-            "Choose a preset",
-            options=["-- None --"] + available_presets,
+            "Chọn cài đặt",
+            options=["-- Không --"] + available_presets,
             key="preset_selector"
         )
         
         col_load, col_del = st.columns(2)
         
         with col_load:
-            if st.button("📂 Load", width='stretch', disabled=(selected_preset == "-- None --")):
-                if selected_preset != "-- None --":
+            if st.button("📂 Tải", width='stretch', disabled=(selected_preset == "-- Không --")):
+                if selected_preset != "-- Không --":
                     ref_img, config = load_preset(selected_preset)
                     if ref_img and config:
                         st.session_state.loaded_preset_ref = ref_img
@@ -250,35 +243,54 @@ with st.sidebar:
                         st.session_state.loaded_preset_name = selected_preset
                         # Increment counter to force slider recreation with new values
                         st.session_state.preset_reload_count = st.session_state.get('preset_reload_count', 0) + 1
-                        st.success(f"✅ Loaded preset: {selected_preset}")
+                        st.success(f"✅ Đã tải cài đặt: {selected_preset}")
                         st.rerun()
                     else:
-                        st.error("❌ Failed to load preset")
+                        st.error("❌ Không thể tải cài đặt")
         
         with col_del:
-            if st.button("🗑️ Delete", width='stretch', disabled=(selected_preset == "-- None --")):
-                if selected_preset != "-- None --":
-                    if delete_preset(selected_preset):
-                        st.success(f"✅ Deleted: {selected_preset}")
+            if st.button("🗑️ Xóa", width='stretch', disabled=(selected_preset == "-- Không --")):
+                if selected_preset != "-- Không --":
+                    st.session_state.confirm_delete_preset = True
+                    st.session_state.delete_preset_name = selected_preset
+                    st.rerun()
+        
+        # Show delete confirmation dialog
+        if st.session_state.confirm_delete_preset and st.session_state.delete_preset_name:
+            st.warning(f"⚠️ Bạn có chắc muốn xóa cài đặt '{st.session_state.delete_preset_name}'?")
+            col_confirm, col_cancel = st.columns(2)
+            
+            with col_confirm:
+                if st.button("✅ Xác Nhận Xóa", width='stretch', key="confirm_delete_btn"):
+                    if delete_preset(st.session_state.delete_preset_name):
+                        st.success(f"✅ Đã xóa: {st.session_state.delete_preset_name}")
+                        st.session_state.confirm_delete_preset = False
+                        st.session_state.delete_preset_name = None
                         st.rerun()
                     else:
-                        st.error("❌ Failed to delete preset")
+                        st.error("❌ Không thể xóa cài đặt")
+            
+            with col_cancel:
+                if st.button("❌ Hủy", width='stretch', key="cancel_delete_btn"):
+                    st.session_state.confirm_delete_preset = False
+                    st.session_state.delete_preset_name = None
+                    st.rerun()
     
     # Save new preset
-    st.write("**Save Current Settings:**")
+    st.write("**Lưu Cài Đặt Hiện Tại:**")
     with st.form("save_preset_form"):
         preset_name = st.text_input(
-            "Preset name",
-            placeholder="e.g., Natural Look, Evening Glam",
-            help="Enter a name for this preset"
+            "Tên cài đặt",
+            placeholder="ví dụ: Makeup Tự Nhiên, Makeup Tối",
+            help="Nhập tên cho cài đặt này"
         )
-        save_button = st.form_submit_button("💾 Save Preset", width='stretch')
+        save_button = st.form_submit_button("💾 Lưu Cài Đặt", width='stretch')
         
         if save_button:
             if not preset_name:
-                st.error("❌ Please enter a preset name")
+                st.error("❌ Vui lòng nhập tên cài đặt")
             elif 'reference_file_for_preset' not in st.session_state or st.session_state.reference_file_for_preset is None:
-                st.error("❌ Please upload a reference image first")
+                st.error("❌ Vui lòng tải ảnh tham khảo trước")
             else:
                 # Save the preset
                 config = {
@@ -289,47 +301,47 @@ with st.sidebar:
                 
                 try:
                     save_preset(preset_name, st.session_state.reference_file_for_preset, config)
-                    st.success(f"✅ Preset saved: {preset_name}")
+                    st.success(f"✅ Đã lưu cài đặt: {preset_name}")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Error saving preset: {str(e)}")
+                    st.error(f"❌ Lỗi khi lưu cài đặt: {str(e)}")
 
 # Load model on first run
 if not st.session_state.model_loaded:
-    with st.spinner("Loading model... This may take a moment."):
+    with st.spinner("Đang tải mô hình... Vui lòng chờ..."):
         st.session_state.inference = load_model()
         if st.session_state.inference is not None:
             st.session_state.model_loaded = True
-            st.success("✅ Model loaded successfully!")
+            st.success("✅ Tải mô hình thành công!")
 
 # Main content
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📸 Source Images (No Makeup)")
+    st.subheader("📸 Ảnh Gốc (Không Makeup)")
     # Add option to choose between single or multiple files
-    batch_mode = st.checkbox("🔢 Batch Mode (Multiple Files)", value=False, 
-                             help="Enable to process multiple source images at once")
+    batch_mode = st.checkbox("🔢 Chế Độ Nhiều Ảnh", value=False, 
+                             help="Bật để xử lý nhiều ảnh cùng lúc")
     
     if batch_mode:
         source_files = st.file_uploader(
-            "Upload source images (up to 10 files)", 
+            "Tải lên ảnh gốc (tối đa 10 ảnh)", 
             type=['png', 'jpg', 'jpeg'],
             key="source",
             accept_multiple_files=True
         )
         
         if source_files:
-            st.info(f"📊 {len(source_files)} file(s) selected")
+            st.info(f"📊 Đã chọn {len(source_files)} ảnh")
             # Show thumbnails
             cols = st.columns(min(4, len(source_files)))
             for idx, file in enumerate(source_files[:8]):  # Show max 8 previews
                 with cols[idx % 4]:
                     img = Image.open(file).convert('RGB')
-                    st.image(img, caption=f"Source {idx+1}", width='stretch')
+                    st.image(img, caption=f"Ảnh {idx+1}", width='stretch')
     else:
         source_files = st.file_uploader(
-            "Upload source image", 
+            "Tải lên ảnh gốc", 
             type=['png', 'jpg', 'jpeg'],
             key="source",
             accept_multiple_files=False
@@ -337,24 +349,24 @@ with col1:
         
         if source_files:
             source_img = Image.open(source_files).convert('RGB')
-            st.image(source_img, caption="Source Image", width='stretch')
+            st.image(source_img, caption="Ảnh Gốc", width='stretch')
             source_files = [source_files]  # Convert to list for consistency
 
 with col2:
-    st.subheader("💅 Reference Image (With Makeup)")
+    st.subheader("💅 Ảnh Tham Khảo (Có Makeup)")
     
     # Check if a preset was loaded
     if 'loaded_preset_ref' in st.session_state and st.session_state.loaded_preset_ref is not None:
-        st.info(f"📋 Using preset: {st.session_state.get('loaded_preset_name', 'Unknown')}")
+        st.info(f"📋 Đang sử dụng cài đặt: {st.session_state.get('loaded_preset_name', 'Không rõ')}")
         reference_img = st.session_state.loaded_preset_ref
-        st.image(reference_img, caption=f"Reference (from preset)", width='stretch')
+        st.image(reference_img, caption=f"Tham khảo (từ cài đặt)", width='stretch')
         
         # Store for preset saving
         st.session_state.reference_file_for_preset = reference_img
         
         reference_file = None  # Mark that we're using preset
         
-        if st.button("🔄 Clear Preset", width='stretch'):
+        if st.button("🔄 Xóa Cài Đặt", width='stretch'):
             st.session_state.loaded_preset_ref = None
             st.session_state.loaded_preset_config = None
             st.session_state.loaded_preset_name = None
@@ -363,29 +375,29 @@ with col2:
             st.rerun()
     else:
         reference_file = st.file_uploader(
-            "Upload reference image",
+            "Tải lên ảnh tham khảo",
             type=['png', 'jpg', 'jpeg'],
             key="reference"
         )
         
         if reference_file:
             reference_img = Image.open(reference_file).convert('RGB')
-            st.image(reference_img, caption="Reference Image", width='stretch')
+            st.image(reference_img, caption="Ảnh Tham Khảo", width='stretch')
             
             # Store for preset saving
             st.session_state.reference_file_for_preset = reference_img
 
 # Processing button
 st.markdown("---")
-process_button = st.button("✨ Apply Makeup Transfer", type="primary", width='stretch')
+process_button = st.button("✨ Bắt Đầu Chuyển Makeup", type="primary", width='stretch')
 
 if process_button:
     if not st.session_state.model_loaded:
-        st.error("❌ Model not loaded. Please refresh the page.")
+        st.error("❌ Mô hình chưa tải. Vui lòng tải lại trang.")
     elif not source_files:
-        st.warning("⚠️ Please upload source image(s)")
+        st.warning("⚠️ Vui lòng tải ảnh gốc")
     elif not reference_file and ('loaded_preset_ref' not in st.session_state or st.session_state.loaded_preset_ref is None):
-        st.warning("⚠️ Please upload a reference image or load a preset")
+        st.warning("⚠️ Vui lòng tải ảnh tham khảo hoặc chọn cài đặt")
     else:
         # Get reference image
         if 'loaded_preset_ref' in st.session_state and st.session_state.loaded_preset_ref is not None:
@@ -401,7 +413,7 @@ if process_button:
         
         # Process
         st.markdown("---")
-        st.subheader(f"🔄 Processing {num_files} image(s)...")
+        st.subheader(f"🔄 Đang xử lý {num_files} ảnh...")
         
         # Overall progress
         overall_progress = st.progress(0)
@@ -416,9 +428,9 @@ if process_button:
         for idx, source_file in enumerate(source_files):
             try:
                 source_img = Image.open(source_file).convert('RGB')
-                file_name = source_file.name if hasattr(source_file, 'name') else f"Image {idx+1}"
+                file_name = source_file.name if hasattr(source_file, 'name') else f"Ảnh {idx+1}"
                 
-                overall_status.text(f"Processing {idx+1}/{num_files}: {file_name}...")
+                overall_status.text(f"Đang xử lý {idx+1}/{num_files}: {file_name}...")
                 
                 start_time = time.time()
                 
@@ -437,7 +449,7 @@ if process_button:
                 processing_times.append(elapsed_time)
                 
                 if result_face is None:
-                    failed_files.append((idx, file_name, "No face detected"))
+                    failed_files.append((idx, file_name, "Không phát hiện khuôn mặt"))
                 else:
                     all_results.append({
                         'index': idx,
@@ -452,38 +464,38 @@ if process_button:
                 overall_progress.progress((idx + 1) / num_files)
                 
             except Exception as e:
-                failed_files.append((idx, file_name if hasattr(source_file, 'name') else f"Image {idx+1}", str(e)))
+                failed_files.append((idx, file_name if hasattr(source_file, 'name') else f"Ảnh {idx+1}", str(e)))
         
         # Calculate statistics
         total_time = sum(processing_times)
         avg_time = total_time / len(processing_times) if processing_times else 0
         
-        overall_status.text(f"✅ Completed! Total: {total_time:.2f}s | Average: {avg_time:.2f}s per image")
+        overall_status.text(f"✅ Hoàn thành! Tổng: {total_time:.2f}s | Trung bình: {avg_time:.2f}s mỗi ảnh")
         
         # Display statistics
         st.markdown("---")
-        st.subheader("📊 Processing Statistics")
+        st.subheader("📊 Thống Kê Xử Lý")
         
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         with col_s1:
-            st.metric("Total Images", num_files)
+            st.metric("Ảnh Tổng", num_files)
         with col_s2:
-            st.metric("Successful", len(all_results), delta=None if len(all_results) == num_files else f"-{len(failed_files)}")
+            st.metric("Thành Công", len(all_results), delta=None if len(all_results) == num_files else f"-{len(failed_files)}")
         with col_s3:
-            st.metric("Total Time", f"{total_time:.2f}s")
+            st.metric("Tổng Thời Gian", f"{total_time:.2f}s")
         with col_s4:
-            st.metric("Avg Time/Image", f"{avg_time:.2f}s")
+            st.metric("TB/Ảnh", f"{avg_time:.2f}s")
         
         # Show failed files if any
         if failed_files:
-            st.warning(f"⚠️ {len(failed_files)} file(s) failed to process:")
+            st.warning(f"⚠️ {len(failed_files)} ảnh không xử lý được:")
             for idx, name, error in failed_files:
                 st.text(f"  • {name}: {error}")
         
         # Display results
         if all_results:
             st.markdown("---")
-            st.subheader("✨ Results")
+            st.subheader("✨ Kết Quả")
             
             # Display each result
             for result in all_results:
@@ -492,16 +504,16 @@ if process_button:
                     col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
-                        st.image(result['source'], caption="Source", width='stretch')
+                        st.image(result['source'], caption="Gốc", width='stretch')
                     
                     with col2:
-                        st.image(reference_img, caption="Reference", width='stretch')
+                        st.image(reference_img, caption="Tham khảo", width='stretch')
                     
                     with col3:
-                        st.image(result['result_face'], caption="Face Only", width='stretch')
+                        st.image(result['result_face'], caption="Chỉ Khuôn Mặt", width='stretch')
                     
                     with col4:
-                        st.image(result['result_full'], caption="Full Image", width='stretch')
+                        st.image(result['result_full'], caption="Toàn Bộ", width='stretch')
                     
                     # Download buttons
                     from io import BytesIO
@@ -518,7 +530,7 @@ if process_button:
                     
                     with col_dl1:
                         st.download_button(
-                            label="⬇️ Face Only",
+                            label="⬇️ Chỉ Khuôn Mặt",
                             data=byte_face,
                             file_name=f"makeup_{result['index']+1}_face.png",
                             mime="image/png",
@@ -527,7 +539,7 @@ if process_button:
                     
                     with col_dl2:
                         st.download_button(
-                            label="⬇️ Full Image",
+                            label="⬇️ Toàn Bộ",
                             data=byte_full,
                             file_name=f"makeup_{result['index']+1}_full.png",
                             mime="image/png",
@@ -537,7 +549,7 @@ if process_button:
             # Batch download all results
             if len(all_results) > 1:
                 st.markdown("---")
-                st.subheader("📦 Batch Download")
+                st.subheader("📦 Tải Nhiều")
                 
                 import zipfile
                 from io import BytesIO
@@ -556,7 +568,7 @@ if process_button:
                         zip_file.writestr(f"full_image/makeup_{result['index']+1}_full.png", buf_full.getvalue())
                 
                 st.download_button(
-                    label=f"⬇️ Download All ({len(all_results)} images as ZIP)",
+                    label=f"⬇️ Tải Tất Cả ({len(all_results)} ảnh dạng ZIP)",
                     data=zip_buffer.getvalue(),
                     file_name="makeup_transfer_batch.zip",
                     mime="application/zip",
@@ -566,8 +578,4 @@ if process_button:
 
 # Footer
 st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #666; padding: 1rem;">
-    <p>Powered by EleGANt - ECCV 2022 | Made with ❤️ using Streamlit</p>
-</div>
-""", unsafe_allow_html=True)
+
