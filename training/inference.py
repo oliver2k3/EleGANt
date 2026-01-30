@@ -435,3 +435,81 @@ class Inference:
             return result
         else:
             return self.postprocess(source, crop_face, result)
+
+    def cache_reference(self, reference: Image):
+        reference_input, _, _ = self.preprocess(reference)
+        if not reference_input:
+            return None
+        return self.prepare_input(*reference_input)
+
+    def transfer_all_faces_cached(self, source: Image, cached_reference, postprocess=True, return_full_image=False):
+        if cached_reference is None:
+            return None if not return_full_image else (None, None)
+        
+        original_source = source.copy()
+        source_faces = self.preprocess.preprocess_all_faces(source)
+        
+        if source_faces is None:
+            return None if not return_full_image else (None, None)
+        
+        if isinstance(source_faces, tuple):
+            processed_face = self.preprocess.process(*source_faces[0])
+            source_input = self.prepare_input(*processed_face)
+            face_result = self.solver.test(*source_input, *cached_reference)
+            
+            crop_face = source_faces[2]
+            if postprocess:
+                if crop_face is not None:
+                    cropped_source = source.crop(
+                        (crop_face.left(), crop_face.top(), crop_face.right(), crop_face.bottom()))
+                else:
+                    cropped_source = source
+                face_result = self.postprocess(cropped_source, crop_face, face_result)
+            
+            if not return_full_image:
+                return face_result
+            
+            if crop_face is not None:
+                full_result = self.paste_face_to_full_image(original_source, face_result, crop_face)
+            else:
+                full_result = face_result
+            return face_result, full_result
+        
+        result_image = original_source.copy()
+        for face_data, face_on_image, crop_face in source_faces:
+            try:
+                processed_face = self.preprocess.process(*face_data)
+                source_input = self.prepare_input(*processed_face)
+                face_result = self.solver.test(*source_input, *cached_reference)
+                
+                if postprocess:
+                    if crop_face is not None:
+                        cropped_source = source.crop(
+                            (crop_face.left(), crop_face.top(), crop_face.right(), crop_face.bottom()))
+                    else:
+                        cropped_source = source
+                    face_result = self.postprocess(cropped_source, crop_face, face_result)
+                
+                if crop_face is not None:
+                    result_image = self.paste_face_to_full_image(result_image, face_result, crop_face)
+                else:
+                    result_image = face_result
+                    
+            except Exception as e:
+                print(f"Face processing failed: {e}")
+                return None if not return_full_image else (None, None)
+        
+        if return_full_image:
+            return result_image, result_image
+        return result_image
+
+    def batch_transfer(self, sources: List[Image], reference: Image, postprocess=True):
+        cached_ref = self.cache_reference(reference)
+        if cached_ref is None:
+            return [None] * len(sources)
+        
+        results = []
+        for source in sources:
+            result = self.transfer_all_faces_cached(source, cached_ref, postprocess=postprocess)
+            results.append(result)
+        return results
