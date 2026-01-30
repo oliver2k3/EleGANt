@@ -1,0 +1,9 @@
+{
+  "images": [
+    {"path": "single_face.jpg", "expected_faces": 1},
+    {"path": "two_faces.jpg", "expected_faces": 2}
+  ],
+  "reference": "reference.png",
+  "description": "Benchmark test images for EleGANt performance measurement",
+  "total_expected_faces": 3
+}
